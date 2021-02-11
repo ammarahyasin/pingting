@@ -260,19 +260,21 @@ class Traceroute(NetworkApplication):
 class WebServer(NetworkApplication):
 
     def handleRequest(tcpSocket):
-        # 1. Receive request message from the client on connection socket
-        # IPv4 address is 4 bytes in length
-        bufferSize = tcpSocket.CMSG_SPACE(4)
-        requestMessage=tcpSocket.recvmsg(bufferSize[0, [0]])
+        # 1. Receive request message from the client on connection (tcp?) socket
+        #
+        tcpSocket = serverSocket.accept() # acceptrequest
+        bufferSize = tcpSocket.CMSG_SPACE(4) # IPv4 address is 4 bytes in length - calculates the size of the buffer that should be allocated for receiving the ancillary data.
+        #recieve message in buffer size allocated 
+        requestMessage = tcpSocket.recvmsg(bufferSize[0, [0]])
         # 2. Extract the path of the requested object from the message (second part of the HTTP header)
-        file=requestMessage.unpack_from( format, buffer, offset = 1)  # returns a tuple
+        file = requestMessage.unpack_from(bufferSize)  # returns a tuple
         # 3. Read the corresponding file from disk
-        socket.sendfile(file, offset = 0, count =None)
+        socket.sendfile(file)
         # 4. Store in temporary buffer
-        buffer = socket.makefile( mode = 'r', buffering =None, encoding=None, errors=None, newline=None)
-        struct.pack_into(format, self.buffer, 0, file)
-        # 5. Send the correct HTTP response error- what error is this abegggg
-        httpResponseError= "GET /" + file + " HTTP/1.1\r\n\r\n"
+        tempBuffer = socket.makefile( mode = 'r', buffering =None, encoding=None, errors=None, newline=None)
+        tempFile = struct.pack_into(format, self.tempBuffer, 0, file)
+        # 5. Send the correct HTTP response error- what error is this??
+        httpResponseError= ("HTTP/1.1 404 Not Found\r\n")
         tcpSocket.sendmsg(httpResponseError)
         # 6. Send the content of the file to the socket
         tcpSocket.recvmsg(bufferSize[0, 0])
@@ -339,26 +341,10 @@ class Proxy(NetworkApplication):
         file= requestMessage.unpack_from( format, buffer, offset = 1)  # returns a tuple
 
          # 2. send HTTP request for object to proxy server
-        httpRequest= "GET /" + file + " HTTP/1.1\r\n\r\n"
+        httpRequest= ("GET /" + file + " HTTP/1.1\r\n\r\n")
         clientSocket.send(httpRequest.encode())
-        print("Request message sent.")
+        print("Request message sent")
         # 3. proxy server checks to see if copy of object is stored locally- calls class localObject
-        localObject(requestMessage)
-        # 4. proxy server sends HTTP request for the object into the cache-to-server TCP connection
-
-        # 5. origin server receives request
-
-        # 6. origin server sends object to proxy server within a HTTP response
-
-        # 7. proxy server receives the object
-        object= serverSocket.recvmsg(bufferSize[0, 0])
-
-        # 8. proxy server stores copy in its local storage
-
-        # 9. proxy server sends copy -in HTTP response message- to client browser over TCP connection
-
-        # proxy server checks to see if copy of object is stored locally
-    def localObject(requestMessage):
         filename= requestMessage.split()[1]
         try:
             isObjectLocal=open(filename[1:], "r")  # open file in text mode
@@ -374,9 +360,23 @@ class Proxy(NetworkApplication):
             # bind the socket to a public host, and a well-known port
             proxySocket.bind((socket.gethostname(), 80))
             #sends HTTP request for object
-
+            proxySocket.send(httpRequest.encode())
             #origin server recieves request
-            clientServer.recvmessage()
+            clientServer.recvmessage(httpRequest.encode())
+        # 4. proxy server sends HTTP request for the object into the cache-to-server TCP connection
+
+        # 5. origin server receives request
+
+        # 6. origin server sends object to proxy server within a HTTP response
+
+        # 7. proxy server receives the object
+        object= serverSocket.recvmsg(bufferSize[0, 0])
+
+        # 8. proxy server stores copy in its local storage
+
+        # 9. proxy server sends copy -in HTTP response message- to client browser over TCP connection
+
+        # proxy server checks to see if copy of object is stored locally
 
 if __name__ == "__main__":
     args= setupArgumentParser()
