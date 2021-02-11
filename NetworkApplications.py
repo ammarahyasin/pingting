@@ -81,8 +81,7 @@ class NetworkApplication:
         answer = socket.htons(answer)
         return answer
 
-    def printOneResult(self, destinationAddress: str, packetLength:
-                       int, time: float, ttl: int, destinationHostname=''):
+    def printOneResult(self, destinationAddress: str, packetLength: int, time: float, ttl: int, destinationHostname=''):
 
         if destinationHostname:
             print("%d bytes from %s (%s):ttl=%d time=%.2f ms" % (
@@ -104,129 +103,108 @@ class ICMPPing(NetworkApplication):
 
         # 1. Wait for the socket to receive a reply. #2. Once received, record time of receipt, otherwise, handle a timeout
         try:
-            response, address = icmpSocket.recvfrom(1024)
-            # Find the time the ping was sent at
-            sentTime = response.split()[2]
-	        # Calculate the round trip time (RTT)
-	        roundTripTime = (time.time() * 1000) - sentTime)
+            timeRecieved = time.time()
+            information, address = icmpSocket.recvfrom(1024)
+            timeSent = information.split()[2]
+            
+            # 3. Compare the time of receipt to time of sending, producing the total network delay
+            timeSent= self.sendOnePing(icmpSocket, destinationAddress, 111)
+            totalNetworkDelay = (timeRecieved*1000) - timeSent
+            
+            # 4. Unpack the packet header for useful information, including the ID
+            icmpType, icmpCode, icmpChecksum, icmpPacketID, icmpSeqNumber = struct.unpack("bbHHh", icmpHeader)
 
+            # 5. Check that the ID matches between the request and reply AND THEN 6. Return total network delay
+            if(icmpPacketID == self.ID):
+                return totalNetworkDelay
 
-        except timeout:
-                # No response received, print the timeout message
+            else:
+                return 0
+
+        except timeout: # No response received, print the timeout message
             print("Request timed out")
 
 
-        recPacket, addr = icmpSocket.recvfrom(1024)
-        timeRecieved = time.time()
-        icmpHeader = recPacket[20:28]
-
-        # 3. Compare the time of receipt to time of sending, producing the total network delay
-        timeSent=self.sendOnePing(icmpSocket, destinationAddress, 111)
-        timeTaken = timeRecieved - timeSent
-
-        # 4. Unpack the packet header for useful information, including the ID
-        icmpType, icmpCode, icmpChecksum, icmpPacketID, icmpSeqNumber=struct.unpack("bbHHh", icmpHeader)
-
-         # 5. Check that the ID matches between the request and reply AND THEN 6. Return total network delay
-        if(icmpPacketID == ID):
-             return addr[0].timeTaken
-
-        else:
-            return 0
 
     def sendOnePing(self, icmpSocket, destinationAddress, ID):
-                # 1. Build ICMP header
-                #headerType = 8
-                #headerCode = 0
-                #chksum = 0
-                #seq = 1
-                #data = "data"
-                icmpHeader=struct.pack("bbHHh", 8, 0, 0, ID, 1)
+        # 1. Build ICMP header
+        icmpHeader=struct.pack("bbHHh", 8, 0, 0, ID, 1)
 
-                # 2. Checksum ICMP packet using given function
-                icmpChecksum=self.checksum(icmpHeader)
+        # 2. Checksum ICMP packet using given function
+        icmpChecksum = self.checksum(icmpHeader)
 
-                # 3. Insert checksum into packet
-                icmpheader=struct.pack("bbHHh", 8, 0, icmpChecksum, ID, 1)
-                #packet = icmpHeader
+        # 3. Insert checksum into packet
+        icmpHeader = struct.pack("bbHHh", 8, 0, icmpChecksum, ID, 1)
 
-                # 4. Send packet using socket
-                # double check this //run with wireshark
-                icmpSocket.sendto(icmpHeader, (destinationAddress, 1))
+        # 4. Send packet using socket- double check this //run with wireshark
+        icmpSocket.sendto(icmpHeader, (destinationAddress, 1))
+        
+        # 5. Record time of sending
+        timeSent=time.time()
+        return timeSent
 
-                # 5. Record time of sending
-                timeOfSending=time.time()
-                return timeOfSending
+    def doOnePing(self, destinationAddress, timeout):
+        # 1. Create ICMP socket
+        # Translate an Internet protocol name (for example, 'icmp') to a constant suitable for passing as the (optional) third argument to the socket() function.
+        icmpSocket=socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("ICMPSocket"))
 
-                def doOnePing(self, destinationAddress, timeout):
-                # 1. Create ICMP socket
-                # Translate an Internet protocol name (for example, 'icmp') to a constant suitable for passing as the (optional) third argument to the socket() function.
-                ICMP_CODE=socket.getprotobyname("ICMPSocket")
-                icmpSocket=socket.socket(
-            socket.AF_INET, socket.SOCK_RAW, ICMP_CODE)
+        # 2. Call sendOnePing function
+        timeSent = self.sendOnePing(icmpSocket, destinationAddress, 111)
 
-                # 2. Call sendOnePing function
-                timeOfSending=self.sendOnePing(
-            icmpSocket, destinationAddress, 111)
+        # 3. Call receiveOnePing function
+        networkDelay = self.receiveOnePing(icmpSocket, destinationAddress, 111, 1000, timeSent)
 
-                # 3. Call receiveOnePing function
-                networkDelay=self.receiveOnePing(
-            icmpSocket, destinationAddress, 111, 1000, timeOfSending)
+        # 4. Close ICMP socket
+        icmpSocket.close()
 
-                # 4. Close ICMP socket
-                icmpSocket.close()
+        # 5. Return total network delay
+        return networkDelay
 
-                # 5. Return total network delay
-                return networkDelay[0], networkDelay[1]
+    def __init__(self, args):
+        print('Ping to: %s...' % (args.hostname))
+        # 1. Look up hostname, resolving it to an IP address
+        ipAddress = socket.gethostbyname(args.hostname)
 
-                def __init__(self, args):
-                print('Ping to: %s...' % (args.hostname))
-                # 1. Look up hostname, resolving it to an IP address
-                ip_address=socket.gethostbyname(args.hostname)
-
-                # 2. Call doOnePing function approximately every second
-                while True:
-                time.sleep(1)
-                recAddressAndDelay=self.doOnePing(ip_address, args.timeout, 1)
-                # 3. Print out the returned delay (and other relevant details) using the printOneResult method
-                self.printOneResult(
-            ip_address, 50, recAddressAndDelay[1]*1000, 150)
-                #Example use of printOneResult - complete as appropriate
-                # 4. Continue this process until stopped - did this through the while True
+        # 2. Call doOnePing function approximately every second
+        while True:
+            time.sleep(1)
+            returnedDelay = self.doOnePing(ipAddress, args.timeout, 1)
+            # 3. Print out the returned delay (and other relevant details) using the printOneResult method
+            self.printOneResult(ipAddress, 50, returnedDelay, 150)
+            #Example use of printOneResult - complete as appropriate
+            # 4. Continue this process until stopped - did this through the while True
 
 
 class Traceroute(NetworkApplication):
 
     def __init__(self, args):
-        #
+    #
         # Please ensure you print each result using the printOneResult method!
         print('Traceroute to: %s...' % (args.hostname))
         # 1. Look up hostname, resolving it to an IP address
-        ipAddress = socket.gethostbyname(args.hostname)
-        numberofNodes = 0  # create variable and initialise
+        ipAddress= socket.gethostbyname(args.hostname)
+        numberofNodes= 0  # create variable and initialise
         # 2. Call PingOneNode function approximately every second
         while True:
             time.sleep(1)
             nodalDelay = self.pingOneNode(ipAddress, args.timeout, 1)
             self.printOneResult(ipAddress, 50, nodalDelay[1]*1000, 150)
-            numberofNodes = numberofNodes + 1  # adds one to number of nodes
+            numberofNodes = numberofNodes + 1  # increments number of nodes
             # 4. Continue this process until stopped - until ICMP = 0
             if self.ICMP_CODE == 0:
                 break
-        # 3. Print out the returned delay (and other relevant details) using the printOneResult method
-        # check this don't think its right
-            #self.printOneResult(ip_address, 50, nodalDelay[1]*1000, 150)
+            # 3. Print out the returned delay (and other relevant details) using the printOneResult method
+            # check this don't think its right
+            self.printOneResult(ipAddress, 50, nodalDelay[1]*1000, 150)
 
     def pingOneNode():
         # 1. Create ICMP socket
-        icmpSocket = socket.socket(
-            socket.AF_INET, socket.SOCK_RAW, (socket.getprotobyname("icmp")))
+        icmpSocket= socket.socket(socket.AF_INET, socket.SOCK_RAW, (socket.getprotobyname("icmp")))
         # 2. Call sendNodePing function
-        timeSent = self.sendNodePing(icmpSocket, destinationAddress, 111)
+        timeSent= self.sendNodePing(icmpSocket, destinationAddress, 111)
         # 3. Call recieveNodePing function
-        networkDelay = self.recieveNodePing(
-            icmpSocket, destinationAddress, 111, 1000, timeSent)
-        # 4. Close ICMP socket
+        networkDelay= self.recieveNodePing(icmpSocket, destinationAddress, 111, 1000, timeSent)
+         # 4. Close ICMP socket
         icmpSocket.close()
         # 5. Return total network delay- add up all the nodes
         for x in numberOfNodes:
@@ -236,52 +214,42 @@ class Traceroute(NetworkApplication):
             return totalDelay
 
     def sendNodePing(icmpSocket):
-        # 1. Build ICMP header
-        icmpHeader = struct.pack("bbHHh", 8, 0, 0, ID, 1)
+         # 1. Build ICMP header
+        icmpHeader= struct.pack("bbHHh", 8, 0, 0, ID, 1)
         # 2. Checksum ICMP packet using given function
-        icmpChecksum = self.checksum(icmpHeader)
-        # 3. Insert checksum into packet
-        packetHeader = struct.pack("bbHHh", 8, 0, icmpChecksum, ID, 1)
-        packet = packetHeader
+        icmpChecksum= self.checksum(icmpHeader)
+         # 3. Insert checksum into packet
+        packetHeader= struct.pack("bbHHh", 8, 0, icmpChecksum, ID, 1)
+        packet= packetHeader
         # 4. Send packet using socket
         # double check this //run with wireshark
         icmpSocket.sendto(packet, (destinationAddress, 1))
         # 5. Record time of sending
-        sentTime = time.time()
+        sentTime= time.time()
         return sentTime
 
     def recieveNodePing():
         # 1. Wait for the socket to receive a reply- TTL = 0
-        timeLeft = timeout/1000
-        select = 0
-        sentTime = time.time()
-        whatReady = select.select([icmpSocket], [], [], timeLeft)
-        howLongInSelect = (time.time() - sentTime)
-
+        sentTime= time.time()
         # 2. Once received, record time of receipt, otherwise, handle a timeout
-        timeLeft = timeLeft - howLongInSelect
         try:  # TTL == 0
-            recPacket, addr = icmpSocket.recvfrom(1024)
             timeRecieved = time.time()
-            icmpHeader = recPacket[20:28]
-            return timeLeft
-        except self.TTL != 0:  # timeout
+            # 3. Compare the time of receipt to time of sending, producing the total network delay- did when calculated RTT? 
+            totalNetworkDelay = (timeRecieved * 1000) - sentTime
+            # 4. Unpack the packet header for useful information, including the ID
+            icmpType, icmpCode, icmpChecksum, icmpPacketID, icmpSeqNumber= struct.unpack("bbHHh", icmpHeader)
+            # 5. Check that the ID matches between the request and reply and # 6. Return total network delay
+            if(icmpPacketID == ID):
+                return totalNetworkDelay
+            else:
+                return 0     
+        
+        except self.TTL != 0:  #if nothing is recieved, handle a timeout
+            print("TTL is 0 - socket has not recieved a reply")
             return None
-
-        # 3. Compare the time of receipt to time of sending, producing the total network delay
-        timeSent = self.sendNodePing(icmpSocket, destinationAddress, 111)
-        Delay = timeRecieved - timeSent
-
-        # 4. Unpack the packet header for useful information, including the ID
-        icmpType, icmpCode, icmpChecksum, icmpPacketID, icmpSeqNumber = struct.unpack(
-            "bbHHh", icmpHeader)
-
-        # 5. Check that the ID matches between the request and reply and
-        # 6. Return total network delay
-        if(icmpPacketID == ID):
-            return pingOneNode.TotalDelay
-        else:
-            return 0
+        
+        
+        
 
 
 class WebServer(NetworkApplication):
@@ -290,18 +258,16 @@ class WebServer(NetworkApplication):
         # 1. Receive request message from the client on connection socket
         # IPv4 address is 4 bytes in length
         bufferSize = tcpSocket.CMSG_SPACE(4)
-        requestMessage = tcpSocket.recvmsg(bufferSize[0, [0]])
+        requestMessage=tcpSocket.recvmsg(bufferSize[0, [0]])
         # 2. Extract the path of the requested object from the message (second part of the HTTP header)
-        file = requestMessage.unpack_from(
-            format, buffer, offset=1)  # returns a tuple
+        file=requestMessage.unpack_from( format, buffer, offset = 1)  # returns a tuple
         # 3. Read the corresponding file from disk
-        socket.sendfile(file, offset=0, count=None)
+        socket.sendfile(file, offset = 0, count =None)
         # 4. Store in temporary buffer
-        buffer = socket.makefile(
-            mode='r', buffering=None, encoding=None, errors=None, newline=None)
+        buffer = socket.makefile( mode = 'r', buffering =None, encoding=None, errors=None, newline=None)
         struct.pack_into(format, self.buffer, 0, file)
         # 5. Send the correct HTTP response error- what error is this abegggg
-        httpResponseError = "GET /" + file + " HTTP/1.1\r\n\r\n"
+        httpResponseError= "GET /" + file + " HTTP/1.1\r\n\r\n"
         tcpSocket.sendmsg(httpResponseError)
         # 6. Send the content of the file to the socket
         tcpSocket.recvmsg(bufferSize[0, 0])
@@ -312,7 +278,7 @@ class WebServer(NetworkApplication):
     def __init__(self, args):
         print('Web Server starting on port: %i...' % (args.port))
         # 1. Create server socket
-        serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        serverSocket= socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         print("creating server socket")
         # 2. Bind the server socket to server address and server port
         serverSocket.bind((socket.gethostname(), 80))
@@ -320,7 +286,7 @@ class WebServer(NetworkApplication):
         # 3. Continuously listen for connections to server socket
         serverSocket.listen(5)
         # 4. When a connection is accepted, call handleRequest function, passing new connection socket (see https://docs.python.org/3/library/socket.html#socket.socket.accept)
-        newSocket = socket.accept()
+        newSocket= socket.accept()
         while True:
             handleRequest(newSocket)
             print("calling handleRequest")
@@ -334,43 +300,41 @@ class Proxy(NetworkApplication):
         print('Web Proxy starting on port: %i...' % (args.port))
 
         if __name__ == "__main__":
-            args = setupArgumentParser()
+            args=setupArgumentParser()
             args.func(args)
 
-            # 1. browser establishes TCP connection to proxy server-- SERVER CREATES SOCKET AND LISTENS
-            # connectionless socket: used to establish a TCP connection with the HTTP server.
-            serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            serverSocket.listen(5)
-            #1.1. CLIENT CREATES SOCKET
-            # create server socket
-            # create an INET, STREAMing socket
-            #filename = sys.argv[1:]
-            clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            # bind the socket to a public host, and a well-known port
-            clientSocket.bind((socket.gethostname(), 80))
-            # become a server socket
-            clientSocket.listen(5)
-            # 4. When a connection is accepted, call handleRequest function, passing new connection socket (see https://docs.python.org/3/library/socket.html#socket.socket.accept)
-            while 1:
-                clientSocket, addr = serverSocket.accept()
-                print("recieved connection from ", addr)
-                handleRequest(clientSocket)
-                print("calling handleRequest")
+        # 1. browser establishes TCP connection to proxy server-- SERVER CREATES SOCKET AND LISTENS
+        # connectionless socket: used to establish a TCP connection with the HTTP server.
+        serverSocket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        serverSocket.listen(5)
+        #1.1. CLIENT CREATES SOCKET
+        # create server socket
+        # create an INET, STREAMing socket
+        #filename = sys.argv[1:]
+        clientSocket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # bind the socket to a public host, and a well-known port
+        clientSocket.bind((socket.gethostname(), 80))
+        # become a server socket
+        clientSocket.listen(5)
+        # 4. When a connection is accepted, call handleRequest function, passing new connection socket (see https://docs.python.org/3/library/socket.html#socket.socket.accept)
+        while 1:
+            clientSocket, addr=serverSocket.accept()
+            print("recieved connection from ", addr)
+            handleRequest(clientSocket)
+            print("calling handleRequest")
             # 5. Close server socket? or both sockets?
-                serverSocket.close()
+            serverSocket.close()
 
     def handleRequest(clientSocket):
-
         # 1. Receive request message from the client on connection socket
-        # IPv4 address is 4 bytes in length
-        bufferSize = clientSocket.CMSG_SPACE(4)
-        requestMessage = clientSocket.recvmsg(bufferSize[0, [0]])
+         # IPv4 address is 4 bytes in length
+        bufferSize= clientSocket.CMSG_SPACE(4)
+        requestMessage= clientSocket.recvmsg(bufferSize[0, [0]])
         # 2. Extract the path of the requested object from the message (second part of the HTTP header)
-        file = requestMessage.unpack_from(
-            format, buffer, offset=1)  # returns a tuple
+        file= requestMessage.unpack_from( format, buffer, offset = 1)  # returns a tuple
 
-        # 2. send HTTP request for object to proxy server
-        httpRequest = "GET /" + file + " HTTP/1.1\r\n\r\n"
+         # 2. send HTTP request for object to proxy server
+        httpRequest= "GET /" + file + " HTTP/1.1\r\n\r\n"
         clientSocket.send(httpRequest.encode())
         print("Request message sent.")
         # 3. proxy server checks to see if copy of object is stored locally- calls class localObject
@@ -382,35 +346,35 @@ class Proxy(NetworkApplication):
         # 6. origin server sends object to proxy server within a HTTP response
 
         # 7. proxy server receives the object
-        object = serverSocket.recvmsg(bufferSize[0, 0])
+        object= serverSocket.recvmsg(bufferSize[0, 0])
 
         # 8. proxy server stores copy in its local storage
 
         # 9. proxy server sends copy -in HTTP response message- to client browser over TCP connection
 
-    # proxy server checks to see if copy of object is stored locally
+        # proxy server checks to see if copy of object is stored locally
     def localObject(requestMessage):
-        filename = requestMessage.split()[1]
+        filename= requestMessage.split()[1]
         try:
-            isObjectLocal = open(filename[1:], "r")  # open file in text mode
-            isObjectLocal = "true"
+            isObjectLocal=open(filename[1:], "r")  # open file in text mode
+            isObjectLocal="true"
             # 1.  if it does, the proxy server returns the object within a HTTP response message to the client browser
             # 3. Read the corresponding file from disk
-            socket.sendfile(object, offset=0, count=None)
+            socket.sendfile(object, offset = 0, count =None)
             #send via HTTP response message to client Browser
 
         except isObjectLocal == "false":
             # 2.  if it doesn’t, the proxy server opens a TCP connection to the origin server:
-            proxySocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # bind the socket to a public host, and a well-known port
+            proxySocket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # bind the socket to a public host, and a well-known port
             proxySocket.bind((socket.gethostname(), 80))
-        #sends HTTP request for object
+            #sends HTTP request for object
 
-        #origin server recieves request
+            #origin server recieves request
             clientServer.recvmessage()
 
 if __name__ == "__main__":
-    args = setupArgumentParser()
+    args= setupArgumentParser()
     args.func(args)
 
 def main():
