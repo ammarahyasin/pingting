@@ -146,7 +146,9 @@ class ICMPPing(NetworkApplication):
     def doOnePing(self, destinationAddress, timeout):
         # 1. Create ICMP socket
         # Translate an Internet protocol name (for example, 'icmp') to a constant suitable for passing as the (optional) third argument to the socket() function.
-        icmpSocket=socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("ICMPSocket"))
+        icmp_proto = socket.getprotobyname("icmp") #debugging
+        icmpSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp_proto)
+        #icmpSocket = socket.socket(socket.AF_INET,socket.SOCK_RAW, socket.IPPROTO_ICMP)
 
         # 2. Call sendOnePing function
         timeSent = self.sendOnePing(icmpSocket, destinationAddress, 111)
@@ -168,7 +170,9 @@ class ICMPPing(NetworkApplication):
         # 2. Call doOnePing function approximately every second
         while True:
             time.sleep(1)
-            returnedDelay = self.doOnePing(ipAddress, args.timeout, 1)
+            debuggingTimeout = args.timeout
+            print("testing:", ipAddress, debuggingTimeout)
+            returnedDelay = self.doOnePing(ipAddress, debuggingTimeout)
             # 3. Print out the returned delay (and other relevant details) using the printOneResult method
             self.printOneResult(ipAddress, 50, returnedDelay, 150)
             #Example use of printOneResult - complete as appropriate
@@ -187,7 +191,8 @@ class Traceroute(NetworkApplication):
         # 2. Call PingOneNode function approximately every second
         while True:
             time.sleep(1)
-            nodalDelay = self.pingOneNode(ipAddress, args.timeout, 1)
+            #nodalDelay = self.pingOneNode(ipAddress, args.timeout, 1)
+            nodalDelay = self.pingOneNode()
             self.printOneResult(ipAddress, 50, nodalDelay[1]*1000, 150)
             numberofNodes = numberofNodes + 1  # increments number of nodes
             # 4. Continue this process until stopped - until ICMP = 0
@@ -199,11 +204,12 @@ class Traceroute(NetworkApplication):
 
     def pingOneNode():
         # 1. Create ICMP socket
-        icmpSocket= socket.socket(socket.AF_INET, socket.SOCK_RAW, (socket.getprotobyname("icmp")))
+        icmp_proto = socket.getprotobyname("icmp") #debugging
+        icmpSocket= socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp_proto)
         # 2. Call sendNodePing function
-        timeSent= self.sendNodePing(icmpSocket, destinationAddress, 111)
+        timeSent= sendNodePing(icmpSocket, destinationAddress, 111)
         # 3. Call recieveNodePing function
-        networkDelay= self.recieveNodePing(icmpSocket, destinationAddress, 111, 1000, timeSent)
+        networkDelay= recieveNodePing(icmpSocket, destinationAddress, 111, 1000, timeSent)
          # 4. Close ICMP socket
         icmpSocket.close()
         # 5. Return total network delay- add up all the nodes
@@ -231,6 +237,7 @@ class Traceroute(NetworkApplication):
     def recieveNodePing():
         # 1. Wait for the socket to receive a reply- TTL = 0
         sentTime= time.time()
+        TTL = recvmessage()
         # 2. Once received, record time of receipt, otherwise, handle a timeout
         try:  # TTL == 0
             timeRecieved = time.time()
@@ -244,11 +251,9 @@ class Traceroute(NetworkApplication):
             else:
                 return 0     
         
-        except self.TTL != 0:  #if nothing is recieved, handle a timeout
+        except TTL != 0:  #if nothing is recieved, handle a timeout
             print("TTL is 0 - socket has not recieved a reply")
             return None
-        
-        
         
 
 
