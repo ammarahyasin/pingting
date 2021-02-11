@@ -306,55 +306,53 @@ class Proxy(NetworkApplication):
     def __init__(self, args):
         print('Web Proxy starting on port: %i...' % (args.port))
 
-        if __name__ == "__main__":
-            args=setupArgumentParser()
-            args.func(args)
-
-        # 1. browser establishes TCP connection to proxy server-- SERVER CREATES SOCKET AND LISTENS
-        # connectionless socket: used to establish a TCP connection with the HTTP server.
-        serverSocket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #if __name__ == "__main__":
+        #    args=setupArgumentParser()
+        #    args.func(args)
+            
+        #1. create server socket and listen - connectionless socket: used to establish a TCP connection with the HTTP server
+        serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #2. Bind the server socket to server address and server port
+        serverSocket.bind((socket.gethostname(), 80))
+        #server_socket.bind(('', args.port))
+        print("binding socket")
         serverSocket.listen(5)
-        #1.1. CLIENT CREATES SOCKET
-        # create server socket
-        # create an INET, STREAMing socket
-        #filename = sys.argv[1:]
-        clientSocket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # bind the socket to a public host, and a well-known port
-        clientSocket.bind((socket.gethostname(), 80))
+        #3. create proxy
+        proxySocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        proxySocket.bind((socket.gethostname(), 80))
         # become a server socket
-        clientSocket.listen(5)
-        # 4. When a connection is accepted, call handleRequest function, passing new connection socket (see https://docs.python.org/3/library/socket.html#socket.socket.accept)
+        proxySocket.listen(5)
+        #4. Continuously listen for connections to server socket and proxy
+        #5. When a connection is accepted, call handleRequest function, passing new connection socket  (?)
         while 1:
-            clientSocket, addr=serverSocket.accept()
-            print("recieved connection from ", addr)
-            handleRequest(clientSocket)
-            print("calling handleRequest")
-            # 5. Close server socket? or both sockets?
-            serverSocket.close()
+            connectionSocket, addr = serverSocket.accept() # accept TCP connection from client 
+            with serverSocket.accept()[0] as connectionSocket: #pass new connection socket
+                print("recieved connection from ", addr)
+                handleRequest(proxySocket)
+                print("calling handleRequest")
+                # 5. Close server socket? 
+                serverSocket.close()
+        
 
-    def handleRequest(clientSocket):
-        # 1. Receive request message from the client on connection socket
+    def handleRequest(connectionSocket):
+        #1. Receive request message from the client on connection socket
          # IPv4 address is 4 bytes in length
-        bufferSize= clientSocket.CMSG_SPACE(4)
-        requestMessage= clientSocket.recvmsg(bufferSize[0, [0]])
-        # 2. Extract the path of the requested object from the message (second part of the HTTP header)
-        file= requestMessage.unpack_from( format, buffer, offset = 1)  # returns a tuple
-
-         # 2. send HTTP request for object to proxy server
-        httpRequest= ("GET /" + file + " HTTP/1.1\r\n\r\n")
-        clientSocket.send(httpRequest.encode())
-        print("Request message sent")
-        # 3. proxy server checks to see if copy of object is stored locally- calls class localObject
+        bufferSize = connectionSocket.CMSG_SPACE(4)
+        requestMessage = connectionSocket.recvmsg(bufferSize[0, [0]])
+        #2. forward to proxy
+        proxySocket.recvmsg(requestMessage)
+        #3. proxy extracts the path of the requested object from the message (second part of the HTTP header)
+        file = requestMessage.unpack_from( format, buffer, offset = 1)  # returns a tuple
         filename= requestMessage.split()[1]
+        #4. Read the corresponding file from disk: proxy server checks to see if object is stored locally 
         try:
-            isObjectLocal=open(filename[1:], "r")  # open file in text mode
-            isObjectLocal="true"
+            isObjectLocal = open(filename[1:], "r")  # open file in text mode
             # 1.  if it does, the proxy server returns the object within a HTTP response message to the client browser
             # 3. Read the corresponding file from disk
             socket.sendfile(object, offset = 0, count =None)
             #send via HTTP response message to client Browser
 
-        except isObjectLocal == "false":
+        except isObjectLocal == None:
             # 2.  if it doesn’t, the proxy server opens a TCP connection to the origin server:
             proxySocket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             # bind the socket to a public host, and a well-known port
@@ -362,21 +360,23 @@ class Proxy(NetworkApplication):
             #sends HTTP request for object
             proxySocket.send(httpRequest.encode())
             #origin server recieves request
-            clientServer.recvmessage(httpRequest.encode())
-        # 4. proxy server sends HTTP request for the object into the cache-to-server TCP connection
-
-        # 5. origin server receives request
-
-        # 6. origin server sends object to proxy server within a HTTP response
-
-        # 7. proxy server receives the object
-        object= serverSocket.recvmsg(bufferSize[0, 0])
-
-        # 8. proxy server stores copy in its local storage
-
-        # 9. proxy server sends copy -in HTTP response message- to client browser over TCP connection
-
-        # proxy server checks to see if copy of object is stored locally
+            connectionSocket.recvmessage(httpRequest.encode())
+            
+            #5. Store in temporary buffer
+            #6. Send the correct HTTP response error
+            httpRequest= ("GET /" + file + " HTTP/1.1\r\n\r\n")
+            connectionSocket.send(httpRequest.encode())
+            #connctionSocket.send("HTTP/1.1 200 OK\r\n\r\n")
+            print("Request message sent")
+            #7. send content to webserver
+            object = connectionSocket.send(bufferSize[0, 0])
+            serverSocket.recvmsg(object)
+            #8. Send the content of the file to the socket
+        
+            #9. Close the connection socket  
+            connectionSocket.close()
+        
+        
 
 if __name__ == "__main__":
     args= setupArgumentParser()
