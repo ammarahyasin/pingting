@@ -62,10 +62,10 @@ class NetworkApplication:
 
 class WebServer(NetworkApplication):
 
-    def handleRequest(tcpSocket):
+    def handleRequest(tcpSocket, serverSocket):
         print("handleRequest starting")
         # 1. Receive request message from the client on connection (tcp?) socket
-        #tcpSocket = serverSocket.accept() # acceptrequest
+        tcpSocket = serverSocket.accept() # acceptrequest
         bufferSize = tcpSocket.CMSG_SPACE(4) # IPv4 address is 4 bytes in length - calculates the size of the buffer that should be allocated for receiving the ancillary data.
         #recieve message in buffer size allocated 
         requestMessage = tcpSocket.recvmsg(bufferSize[0, [0]])
@@ -135,9 +135,10 @@ class Proxy(NetworkApplication):
         serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #2. Bind the server socket to server address and server port
         #serverSocket.bind((socket.gethostname(), args.port))
-        serverSocket.bind(('', (args.port+2)))
+        hostname = "127.0.0.1"
+        serverSocket.bind((hostname, (args.port)))
         #serverSocket.bind((sys.argv[1],80))
-        print("binding socket")
+        print("binding socket to", hostname, args.port)
         serverSocket.listen(5)
         print("listening")
         #4. Continuously listen for connections to server socket and proxy
@@ -146,37 +147,39 @@ class Proxy(NetworkApplication):
             print("accepting")
             connectionSocket, addr = serverSocket.accept() # accept TCP connection from client 
             print("accepted xx")
-            with serverSocket.accept()[0] as connectionSocket: #pass new connection socket
-            #print("recieved connection from ", addr)
+            #with serverSocket.accept()[0] as connectionSocket: #pass new connection socket
+            print("recieved connection from ", addr)
             #3. create proxy
-                #print("making proxy")
-                #proxySocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                #proxySocket.bind((socket.gethostname(), (args.port)+1))
-                #proxySocket.bind(('', (args.port+1)))
-                # become a server socket
-                #proxySocket.listen(5)
-                print("listening2")
-                #handleRequest(proxySocket)
-                handleRequest(connectionSocket)
-                print("calling handleRequest")
+            print("making proxy")
+            proxySocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            proxySocket.bind((hostname, (args.port)+1)) #binding to another port 
+            #proxySocket.bind(('', (args.port+1)))
+            # become a server socket
+            proxySocket.listen(5)
+            print("connectionSocket:", connectionSocket, "proxy: ", proxySocket, "serverSocket: ", serverSocket)
+            #handleRequest(proxySocket)
+            self.handleRequest(connectionSocket, proxySocket, serverSocket)
+            print("calling handleRequest")
             # 5. Close server socket? 
             serverSocket.close()
         
 
-    def handleRequest(connectionSocket):
+    def handleRequest(self, connectionSocket, proxySocket, serverSocket):
         #1. Receive request message from the client on connection socket
-         # IPv4 address is 4 bytes in length
+        # IPv4 address is 4 bytes in length
         bufferSize = connectionSocket.CMSG_SPACE(4)
         requestMessage = connectionSocket.recvmsg(bufferSize[0, [0]])
         #2. forward to proxy
+        print("forwarding to proxy")
         proxySocket.recvmsg(requestMessage)
         #3. proxy extracts the path of the requested object from the message (second part of the HTTP header)
-        file = requestMessage.unpack_from( format, buffer, offset = 1)  # returns a tuple
+        file = requestMessage.unpack_from(format, buffer, offset = 1)  # returns a tuple
         filename= requestMessage.split()[1]
         #4. Read the corresponding file from disk: proxy server checks to see if object is stored locally 
         try:
             fileOpen = open(filename[1:], "r")  # open file in text mode
             outputdata = fileOpen.readlines()
+            isObjectLocal = None #initialising
             isObjectLocal == True
             # 1.  if it does, the proxy server returns the object within a HTTP response message to the client browser
             httpResponse= ("GET /" + file + " HTTP/1.1\r\n\r\n")
@@ -188,7 +191,7 @@ class Proxy(NetworkApplication):
             if isObjectLocal == False:
                 # 2.  if it doesn’t, the proxy server opens a TCP connection to the origin server??
                 originIP = serverSocket.gethostbyname(args.hostname)
-                proxySocket.connect(originIP, port)
+                proxySocket.connect(originIP, args.port)
                 # proxySocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 # bind the socket to a public host, and a well-known port
                 # proxySocket.bind((socket.gethostname(), 80))
