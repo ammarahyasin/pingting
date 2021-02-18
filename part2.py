@@ -134,19 +134,12 @@ class Proxy(NetworkApplication):
         #1. create server socket and listen - connectionless socket: used to establish a TCP connection with the HTTP server
         serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #2. Bind the server socket to server address and server port
-        serverSocket.bind((socket.gethostname(), args.port))
-        #serverSocket.bind(('', args.port))
+        #serverSocket.bind((socket.gethostname(), args.port))
+        serverSocket.bind(('', (args.port+2)))
         #serverSocket.bind((sys.argv[1],80))
         print("binding socket")
         serverSocket.listen(5)
         print("listening")
-        #3. create proxy
-        print("making proxy")
-        proxySocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        proxySocket.bind((socket.gethostname(), (args.port)+1))
-        # become a server socket
-        proxySocket.listen(5)
-        print("listening2")
         #4. Continuously listen for connections to server socket and proxy
         #5. When a connection is accepted, call handleRequest function, passing new connection socket  (?)
         while 1:
@@ -154,11 +147,20 @@ class Proxy(NetworkApplication):
             connectionSocket, addr = serverSocket.accept() # accept TCP connection from client 
             print("accepted xx")
             with serverSocket.accept()[0] as connectionSocket: #pass new connection socket
-                print("recieved connection from ", addr)
-                handleRequest(proxySocket)
+            #print("recieved connection from ", addr)
+            #3. create proxy
+                #print("making proxy")
+                #proxySocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                #proxySocket.bind((socket.gethostname(), (args.port)+1))
+                #proxySocket.bind(('', (args.port+1)))
+                # become a server socket
+                #proxySocket.listen(5)
+                print("listening2")
+                #handleRequest(proxySocket)
+                handleRequest(connectionSocket)
                 print("calling handleRequest")
-                # 5. Close server socket? 
-                serverSocket.close()
+            # 5. Close server socket? 
+            serverSocket.close()
         
 
     def handleRequest(connectionSocket):

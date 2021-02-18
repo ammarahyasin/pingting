@@ -639,5 +639,47 @@ if __name__ == "__main__":
 
       args.func(args)
 
+ # 1. Receive request message from the client on connection socket
+         # IPv4 address is 4 bytes in length
+        bufferSize = connectionSocket.CMSG_SPACE(4)
+        requestMessage = connectionSocket.recvmsg(bufferSize[0, [0]])
+        # 2. Extract the path of the requested object from the message (second part of the HTTP header)
+        file = requestMessage.unpack_from( format, buffer, offset = 1)  # returns a tuple
+         # 2. send HTTP request for object to proxy server
+        httpRequest= ("GET /" + file + " HTTP/1.1\r\n\r\n")
+        connectionSocket.send(httpRequest.encode())
+        #connctionSocket.send("HTTP/1.1 200 OK\r\n\r\n")
+        print("Request message sent")
+        # 3. proxy server checks to see if copy of object is stored locally- calls class localObject
+        filename= requestMessage.split()[1]
+        try:
+            isObjectLocal=open(filename[1:], "r")  # open file in text mode
+            # 1.  if it does, the proxy server returns the object within a HTTP response message to the client browser
+            # 3. Read the corresponding file from disk
+            socket.sendfile(object, offset = 0, count =None)
+            #send via HTTP response message to client Browser
 
+        except isObjectLocal == "false":
+            # 2.  if it doesn’t, the proxy server opens a TCP connection to the origin server:
+            proxySocket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # bind the socket to a public host, and a well-known port
+            proxySocket.bind((socket.gethostname(), 80))
+            #sends HTTP request for object
+            proxySocket.send(httpRequest.encode())
+            #origin server recieves request
+            connectionSocket.recvmessage(httpRequest.encode())
+        # 4. proxy server sends HTTP request for the object into the cache-to-server TCP connection
+
+        # 5. origin server receives request
+
+        # 6. origin server sends object to proxy server within a HTTP response
+
+        # 7. proxy server receives the object
+        object= serverSocket.recvmsg(bufferSize[0, 0])
+
+        # 8. proxy server stores copy in its local storage
+
+        # 9. proxy server sends copy -in HTTP response message- to client browser over TCP connection
+
+        # proxy server checks to see if copy of object is stored locally
 
