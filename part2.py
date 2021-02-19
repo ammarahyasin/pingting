@@ -82,7 +82,7 @@ class WebServer(NetworkApplication):
        socket.sendfile(file)
        # 4. Store in temporary buffer
        tempBuffer = socket.makefile( mode = 'r', buffering =None, encoding=None, errors=None, newline=None)
-       tempFile = struct.pack_into(format, self.tempBuffer, 0, file)
+       tempFile = struct.pack_into(format, tempBuffer, 0, file)
        print("store in temp buffer")
        # 5. Send the correct HTTP response error
        httpResponseError= ("HTTP/1.1 404 Not Found\r\n")
@@ -206,7 +206,6 @@ class Proxy(NetworkApplication):
            proxySocket.sendfile(messageAsFile, offset = 0, count =None)
            #close file 
            messageAsFile.close()
-
            #send via HTTP response message to client Browser
            proxySocket.send(httpResponse.encode())
            #origin server recieves request
