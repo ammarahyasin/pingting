@@ -143,7 +143,7 @@ class Proxy(NetworkApplication):
        hostname = "127.0.0.1"
        serverSocket.bind((hostname, (args.port)))
        #serverSocket.bind((sys.argv[1],80))
-       print("binding socket to", hostname, args.port+2)
+       print("binding socket to", hostname, args.port)
        serverSocket.listen(5)
        print("listening")
        #4. Continuously listen for connections to server socket and proxy
@@ -198,10 +198,10 @@ class Proxy(NetworkApplication):
            isObjectLocal = None #initialising
            isObjectLocal == True
            # 1.  if it does, the proxy server returns the object within a HTTP response message to the client browser
-           httpResponse= ("GET /" + filename + " HTTP/1.1\r\n\r\n")
+           httpResponse= ("GET/" + filename + " HTTP/1.1\r\n\r\n")
            print("print response:" ,httpResponse)
            # 3. Read the corresponding file from disk
-           #change message from bytes to file so you can send it 
+           #change message from bytes to file so you can send it, open file in binary mode 
            messageAsFile = open(filename, 'wb')
            proxySocket.sendfile(messageAsFile, offset = 0, count =None)
            #close file 
