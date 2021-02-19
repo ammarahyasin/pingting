@@ -66,27 +66,31 @@ class WebServer(NetworkApplication):
        print("handleRequest starting")
        # 1. Receive request message from the client on connection (tcp?) socket
        #tcpSocket = serverSocket.accept() # acceptrequest
-       bufferSize = tcpSocket.CMSG_SPACE(4) # IPv4 address is 4 bytes in length - calculates the size of the buffer that should be allocated for receiving the ancillary data.
+       #bufferSize = tcpSocket.CMSG_SPACE(4) # IPv4 address is 4 bytes in length - calculates the size of the buffer that should be allocated for receiving the ancillary data.
        #recieve message in buffer size allocated
-       requestMessage = tcpSocket.recvmsg(bufferSize[0, [0]])
-       print("step 1")
+       #requestMessage = tcpSocket.recvmsg(bufferSize[0, [0]])
+       requestMessage = tcpSocket.recvmsg(1024)
+       print("recieved message")
        # 2. Extract the path of the requested object from the message (second part of the HTTP header)
-       file = requestMessage.unpack_from(bufferSize)  # returns a tuple
-       print("step 2")
+       #file = requestMessage.unpack_from(bufferSize)  # returns a tuple
+       file = requestMessage.split()[1].partition("/")[2]
+        #fileExist = "false"
+        #filetouse = "/" + filename
+       print("extract path")
        # 3. Read the corresponding file from disk
-       print("step 3")
+       print("read file from disk")
        socket.sendfile(file)
        # 4. Store in temporary buffer
        tempBuffer = socket.makefile( mode = 'r', buffering =None, encoding=None, errors=None, newline=None)
        tempFile = struct.pack_into(format, self.tempBuffer, 0, file)
-       print("step 4")
+       print("store in temp buffer")
        # 5. Send the correct HTTP response error
        httpResponseError= ("HTTP/1.1 404 Not Found\r\n")
        tcpSocket.sendmsg(httpResponseError)
-       print("step 5")
+       print("send error")
        # 6. Send the content of the file to the socket
-       tcpSocket.recvmsg(bufferSize[0, 0])
-       print("step 6")
+       tcpSocket.recvmsg(1024)
+       print("send to socket")
        # 7. Close the connection socket
        print("socket closed")
        tcpSocket.close()
@@ -139,7 +143,7 @@ class Proxy(NetworkApplication):
        hostname = "127.0.0.1"
        serverSocket.bind((hostname, (args.port)))
        #serverSocket.bind((sys.argv[1],80))
-       print("binding socket to", hostname, args.port)
+       print("binding socket to", hostname, args.port+2)
        serverSocket.listen(5)
        print("listening")
        #4. Continuously listen for connections to server socket and proxy
@@ -154,41 +158,62 @@ class Proxy(NetworkApplication):
            with connectionSocket:
                print("making proxy")
                proxySocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-               proxySocket.bind((hostname, (args.port+1))) #binding to another port
+               #proxySocket.bind((hostname, (args.port+1))) #binding to another port
+               proxySocket.connect((hostname, 8080))
                #proxySocket.bind(('', (args.port+1)))
                # # become a server socket
-               proxySocket.listen(5)
+               #proxySocket.listen(5)
                #print("connectionSocket:", connectionSocket, "proxy: ", proxySocket, "serverSocket: ", serverSocket)
                # #handleRequest(proxySocket)
                print("calling handleRequest")
                self.handleRequest(connectionSocket, proxySocket, serverSocket)
                # 5. Close server socket?
-               serverSocket.close()
+               connectionSocket.close()
+               break
+               #serverSocket.close()
       
  
    def handleRequest(self, connectionSocket, proxySocket, serverSocket):
        #1. Receive request message from the client on connection socket
        # IPv4 address is 4 bytes in length
-       bufferSize = connectionSocket.CMSG_SPACE(4)
-       requestMessage = connectionSocket.recvmsg(bufferSize[0, [0]])
+       #bufferSize = connectionSocket.CMSG_SPACE(4)
+       bufferSize = 1024
+       requestMessage = connectionSocket.recvmsg(bufferSize)
        #2. forward to proxy
        print("forwarding to proxy")
-       socket.proxySocket.recvmsg(requestMessage)
+       print("request message: " ,requestMessage)
+       #proxySocket.recvmsg(bufferSize) #doesn't like this 
+       
        #3. proxy extracts the path of the requested object from the message (second part of the HTTP header)
-       file = requestMessage.unpack_from(format, bufferSize, offset = 1)  # returns a tuple
-       filename= requestMessage.split()[1]
+       #file = struct.unpack_from(format, bufferSize, offset = 1)  # returns a tuple
+       message = requestMessage[0]
+       messageAsString = str(message)
+       #filename = file.
+       filename = messageAsString.split()[1].partition("/")[2]
+       print("path:" ,filename)
        #4. Read the corresponding file from disk: proxy server checks to see if object is stored locally
        try:
-           fileOpen = open(filename[1:], "r")  # open file in text mode
-           outputdata = fileOpen.readlines()
+           #fileOpen = open(filename[1:], "r")  # open file in text mode
+           #outputdata = fileOpen.readlines()
            isObjectLocal = None #initialising
            isObjectLocal == True
            # 1.  if it does, the proxy server returns the object within a HTTP response message to the client browser
-           httpResponse= ("GET /" + file + " HTTP/1.1\r\n\r\n")
+           httpResponse= ("GET /" + filename + " HTTP/1.1\r\n\r\n")
+           print("print response:" ,httpResponse)
            # 3. Read the corresponding file from disk
-           socket.sendfile(object, offset = 0, count =None)
+           #change message from bytes to file so you can send it 
+           messageAsFile = open(filename, 'wb')
+           proxySocket.sendfile(messageAsFile, offset = 0, count =None)
+           #close file 
+           messageAsFile.close()
+
            #send via HTTP response message to client Browser
- 
+           proxySocket.send(httpResponse.encode())
+           #origin server recieves request
+           serverSocket:socket.recvmessage(httpResponse.encode())
+           print("origin server recieved request")
+           pass
+       
        except IOError:
            if isObjectLocal == False:
                # 2.  if it doesn’t, the proxy server opens a TCP connection to the origin server
@@ -198,7 +223,7 @@ class Proxy(NetworkApplication):
                # bind the socket to a public host, and a well-known port
                # proxySocket.bind((socket.gethostname(), 80))
                #sends HTTP request for object
-               httpRequest= ("GET /" + file + " HTTP/1.1\r\n\r\n")
+               httpRequest= ("GET /" + filename + " HTTP/1.1\r\n\r\n")
                proxySocket.send(httpRequest.encode())
                #origin server recieves request
                connectionSocket.recvmessage(httpRequest.encode())
@@ -211,7 +236,7 @@ class Proxy(NetworkApplication):
                tempObject.write("GET "+"http://" + filename + " HTTP/1.0\n\n")
   
                #6. Send the correct HTTP response error
-               httpRequest= ("GET /" + file + " HTTP/1.1\r\n\r\n")
+               httpRequest= ("GET /" + filename + " HTTP/1.1\r\n\r\n")
                connectionSocket.send(httpRequest.encode())
                #connctionSocket.send("HTTP/1.1 200 OK\r\n\r\n")
                print("Request message sent")
