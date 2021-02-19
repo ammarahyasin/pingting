@@ -156,45 +156,42 @@ class ICMPPing(NetworkApplication):
 
 class Traceroute(NetworkApplication):
 
-    def pingEachNode(self, ipAddress, numberOfNodes):
+    def pingEachNode(self, ipAddress):
+        # 1. Create ICMP socket
+        icmp_proto = socket.getprotobyname("icmp") #debugging
+        #icmpSocket= socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp_proto)
+        icmpSocket = socket.socket(socket.AF_INET,socket.SOCK_RAW,socket.IPPROTO_ICMP)
+        #setting initial TTL value to 1 using setsockopt
+        TTL = 0
+        icmpSocket.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, TTL)
 
-        while True: 
-            # 1. Create ICMP socket
-            icmp_proto = socket.getprotobyname("icmp") #debugging
-            #icmpSocket= socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp_proto)
-            icmpSocket = socket.socket(socket.AF_INET,socket.SOCK_RAW,socket.IPPROTO_ICMP)
-            sendingTTL = 1 #set initial TTL to 1
-            recievingTTL = 0
-             # 2. Call sendNodePing function
-            #print('socket: ', icmpSocket, 'ipAddy: ',ipAddress) #debugging
-            timeSent, icmpHeader, sendingTTL = self.sendNodePing(icmpSocket, ipAddress, sendingTTL) #NOTE: need IP adress as second parameter but throwing up errors
+        nodeDelaysList = [] 
+        while True:
+            # 2. Call sendNodePing function
+            timeSent, icmpHeader, TTL = self.sendNodePing(icmpSocket, ipAddress, TTL) 
             # 3. Call recieveNodePing function to get the node delays, ICMP type and TTL 
-            oneNodeDelay ,icmpType, packetLength, TTLMessage  = self.recieveNodePing(icmpSocket, icmpHeader, 111, 1000, timeSent, sendingTTL)
-            if(TTLMessage == True): #if TTL is 0 
-                sendingTTL = sendingTTL + 1
-            elif(TTLMessage == False): #else, end 
+            oneNodeDelay, TTL, icmpHeader, packetLength  = self.recieveNodePing(icmpSocket, ipAddress, icmpHeader, 111, 1000, timeSent, TTL)
+            icmpType = struct.unpack("bbHHh", icmpHeader)[1]
+            if icmpType != 11:
+                print("final node reached")
                 break
-            nodeDelaysList = []
+            
+            #if(TTL == 0):
+                #TTL = TTL + 2
             #nodeDelaysList = pingFunction[0]
             #TTL = pingFunction[1]
             # 4. Close ICMP socket
             icmpSocket.close()
             # 5. Return total network delay- add up all the nodes
-            x = 0
-            for x in (nodeDelaysList): #iterate over list items and add them  up 
-                totalDelay = sum(nodeDelaysList)
-                x = x + 1
-                if x == (len(nodeDelaysList)+1): #add 1 because index starts from 0
-                    break
-                nodeDelaysList.append(oneNodeDelay)
-                print(nodeDelaysList)
-            return totalDelay, icmpType, packetLength 
+        nodeDelaysList.append(oneNodeDelay)
+        print("list:" , nodeDelaysList)
+        return nodeDelaysList, icmpType, packetLength, TTL
 
-    def sendNodePing(self, icmpSocket, ipAddress, sendingTTL):
+    def sendNodePing(self, icmpSocket, ipAddress, TTL):
         # 1. Build ICMP header
         ID = 111
         icmpHeader= struct.pack("bbHHh", 8, 0, 0, ID, 1)
-        TTL = 1 #setting initial TTL value to 1 using setsockopt
+        TTL = TTL + 1 #setting initial TTL value to 1 using setsockopt
         #icmpSocket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, TTL)
         icmpSocket.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, TTL)
         # 2. Checksum ICMP packet using given function
@@ -205,13 +202,11 @@ class Traceroute(NetworkApplication):
         # 4. Send packet using socket
         # double check this //run with wireshark
         icmpSocket.sendto(packet, (ipAddress, 1)) #ipAddy and 1 make up the IPadress and port number
-        sendingTTL = sendingTTL + 1
-        print("sendingTTL is:" ,sendingTTL)
         # 5. Record time of sending
         sentTime= time.time()
-        return sentTime, icmpHeader, sendingTTL
+        return sentTime, icmpHeader, TTL
 
-    def recieveNodePing(self, icmpSocket, icmpHeader, ID, timeout, timeSent, sendingTTL):
+    def recieveNodePing(self, icmpSocket, ipAddress, icmpHeader, ID, timeout, timeSent, TTL):
         # 1. Wait for the socket to receive a reply- TTL = 0
         information, address = icmpSocket.recvfrom(1024)
         #print("TTL is:", TTL)
@@ -219,37 +214,37 @@ class Traceroute(NetworkApplication):
 
         # 2. Once received, record time of receipt, otherwise, handle a timeout
         try:  # TTL == 0
+            TTL = TTL - 1
+            if TTL == 0:
             #icmpSocket.connect(self.hostname, self.port)
-            timeRecieved = time.time()
-            
-            # 3. Compare the time of receipt to time of sending, producing the total network delay- did when calculated RTT? 
-            oneNodeDelay = (timeRecieved) - timeSent
-            # 4. Unpack the packet header for useful information, including the ID
-            icmpType, icmpCode, icmpChecksum, icmpPacketID, icmpSeqNumber= struct.unpack("bbHHh", icmpHeader)
-            packetLength = len(icmpHeader)
-            #print("packetID: ", icmpPacketID)
-            #print("ID: ", ID)
-            #print("packetLength: ", packetLength)
-            # 5. Check that the ID matches between the request and reply and # 6. Return total network delay
-            if(icmpPacketID == ID):
-                recievingTTL = sendingTTL -1 
-                print("new TTL is: ", recievingTTL)
-                #print("delay is: ", oneNodeDelay)
-                if(recievingTTL == 0): #drop packet, respond with TTL exceeded message
-                    TTLMessage = True  
+                timeRecieved = time.time()
+                # 3. Compare the time of receipt to time of sending, producing the total network delay- did when calculated RTT? 
+                oneNodeDelay = (timeRecieved) - timeSent
+                # 4. Unpack the packet header for useful information, including the ID
+                icmpType, icmpCode, icmpChecksum, icmpPacketID, icmpSeqNumber= struct.unpack("bbHHh", icmpHeader)
+                packetLength = len(icmpHeader)
+                #print("packetID: ", icmpPacketID)
+                #print("ID: ", ID)
+                #print("packetLength: ", packetLength)
+                # 5. Check that the ID matches between the request and reply and # 6. Return total network delay
+                if(icmpPacketID == ID):
+                    icmpType = 11
+                    icmpHeader=struct.pack("bbHHh", icmpType, 0, 0, ID, 1)
+                    icmpSocket.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, TTL)
+                    #print("new TTL is: ", TTL)
+                    print("icmpType:", icmpType)
+                    #print("list: ", nodeDelaysList)
+                    return oneNodeDelay, TTL, icmpHeader, packetLength
                 else:
-                    TTLMessage = False
-                return oneNodeDelay, icmpType, packetLength, TTLMessage
-            else:
-                errorMessage = print("ID's don't match, sorry g")
-                recievingTTL = recievingTTL + 1 
-                return False
-                #nodeDelaysList.append(errorMessage)
-                #return nodeDelaysList , icmpType, packetLength
+                    print("ID's don't match, sorry g")
+                    #nodeDelaysList.append(errorMessage)
+                    return oneNodeDelay, TTL , icmpHeader, packetLength
+            elif TTL != 0:
+                sendNodePing(icmpSocket, ipAddress, TTL)
         
         except socket.timeout:  #if nothing is recieved, handle a timeout
             print("Socket has not recieved a reply")
-            return None
+            pass
     
     def __init__(self, args):
         # Please ensure you print each result using the printOneResult method!
@@ -261,16 +256,21 @@ class Traceroute(NetworkApplication):
         while True:
             time.sleep(1)
             #nodalDelay = self.pingEachNode(ipAddress, args.timeout, 1)        
-            nodalDelay, icmpType, packetLength = self.pingEachNode(ipAddress, numberofNodes)
+            nodeDelaysList, icmpType, packetLength, TTL = self.pingEachNode(ipAddress)
             #self.printOneResult(ipAddress, 50, nodalDelay[1]*1000, 150)
             numberofNodes = numberofNodes + 1  # increments number of nodes
-            
+            x = 0
+            for x in (nodeDelaysList): #iterate over list items and add them  up 
+                totalDelay = sum(nodeDelaysList)
+                x = x + 1
+                if x == (len(nodeDelaysList)+1): #add 1 because index starts from 0
+                    break
             # 4. Continue this process until stopped - until icmpType = 11
             if icmpType == 11:
                 print("ICMP Port Unreachable message: final node reached")
                 return False
             # 3. Print out the returned delay (and other relevant details) using the printOneResult method
-            self.printOneResult(ipAddress, packetLength, (nodalDelay*1000), TTL, args.hostname)    
+            self.printOneResult(ipAddress, packetLength, (totalDelay*1000), TTL, args.hostname)    
         
         
         
